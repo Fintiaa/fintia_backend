@@ -56,6 +56,26 @@ export class TransactionsController {
     return this.transactionsService.getStats(userId, from, to);
   }
 
+  @Get('category-expenses')
+  async getCategoryExpenses(
+    @Headers('authorization') auth: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    const userId = await this.getUserId(auth);
+    return this.transactionsService.getCategoryExpenses(userId, from, to);
+  }
+
+  @Get('monthly-history')
+  async getMonthlyHistory(
+    @Headers('authorization') auth: string,
+    @Query('months') months?: string,
+    @Query('locale') locale?: string,
+  ) {
+    const userId = await this.getUserId(auth);
+    return this.transactionsService.getMonthlyHistory(userId, months ? Number(months) : 6, locale || 'es-CO');
+  }
+
   @Get(':id')
   async findOne(
     @Headers('authorization') auth: string,

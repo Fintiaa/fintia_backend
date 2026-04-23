@@ -102,4 +102,59 @@ export class TransactionsService {
 
     return { income, expenses, balance: income - expenses };
   }
+
+  async getCategoryExpenses(userId: string, from: string, to: string) {
+    const { data, error } = await this.supabase
+      .getClient()
+      .from('transactions')
+      .select('category_id, amount')
+      .eq('user_id', userId)
+      .eq('type', 'expense')
+      .gte('date', from)
+      .lte('date', to);
+
+    if (error) throw error;
+
+    const map: Record<string, number> = {};
+    for (const tx of data || []) {
+      map[tx.category_id] = (map[tx.category_id] || 0) + Number(tx.amount);
+    }
+    return map;
+  }
+
+  async getMonthlyHistory(userId: string, months = 6, locale = 'es-CO') {
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+    const from = startDate.toISOString().split('T')[0];
+
+    const { data, error } = await this.supabase
+      .getClient()
+      .from('transactions')
+      .select('type, amount, date')
+      .eq('user_id', userId)
+      .gte('date', from);
+
+    if (error) throw error;
+
+    const buckets: Record<string, { month: string; income: number; expenses: number }> = {};
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      buckets[key] = {
+        month: d.toLocaleDateString(locale, { month: 'short' }),
+        income: 0,
+        expenses: 0,
+      };
+    }
+
+    for (const tx of data || []) {
+      const key = (tx.date as string).substring(0, 7);
+      if (buckets[key]) {
+        if (tx.type === 'income') buckets[key].income += Number(tx.amount);
+        else buckets[key].expenses += Number(tx.amount);
+      }
+    }
+
+    return Object.values(buckets);
+  }
 }
