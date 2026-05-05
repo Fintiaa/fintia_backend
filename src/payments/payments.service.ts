@@ -26,7 +26,7 @@ export class PaymentsService {
             id: 'premium-monthly',
             title: 'Fintia Premium - Mensual',
             quantity: 1,
-            unit_price: 6200,
+            unit_price: 4000,
             currency_id: 'COP',
           },
         ],
