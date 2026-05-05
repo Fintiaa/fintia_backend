@@ -84,6 +84,29 @@ export async function fetchBankEmails(
   return { emails, newTokens };
 }
 
+export async function fetchEmailById(connection: Record<string, any>, messageId: string) {
+  const oauth2Client = createOAuth2Client();
+  oauth2Client.setCredentials({
+    access_token: decrypt(connection.access_token_encrypted),
+    refresh_token: decrypt(connection.refresh_token_encrypted),
+    expiry_date: connection.token_expiry ? new Date(connection.token_expiry).getTime() : undefined,
+  });
+  let newTokens: any = null;
+  oauth2Client.on('tokens', (tokens) => { newTokens = tokens; });
+  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+  const full = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
+  return {
+    email: {
+      id: messageId,
+      headers: full.data.payload!.headers,
+      snippet: full.data.snippet,
+      body: extractBody(full.data.payload!),
+      internalDate: full.data.internalDate,
+    },
+    newTokens,
+  };
+}
+
 function extractBody(payload: any): string {
   if (payload.body?.data) return Buffer.from(payload.body.data, 'base64url').toString('utf8');
   if (payload.parts) {

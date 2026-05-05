@@ -142,21 +142,31 @@ function detectBank(text: string): string {
   return 'Desconocido';
 }
 
-function buildDescription(subject: string, text: string, type: string): string {
+function buildDescription(subject: string, text: string, type: string, bank: string): string {
+  const nameClass = "[A-ZÁÉÍÓÚÑ0-9][\\wÁÉÍÓÚÑáéíóúñ.&'-]*(?:\\s+[A-ZÁÉÍÓÚÑ0-9][\\wÁÉÍÓÚÑáéíóúñ.&'-]*){0,8}";
   const merchantPatterns = [
-    /compra en\s+([A-Z][A-Z\s]{2,40}?)(?:\s+por|\s*$)/,
-    /comercio[:\s]+([^\n.]{3,40})/i,
+    new RegExp(`Compraste\\s+(?:COP|\\$)?\\s?[\\d.,]+\\s+en\\s+(${nameClass})\\s+con\\s+tu`, 'i'),
+    new RegExp(`Realizaste\\s+(?:una\\s+)?(?:compra|pago|retiro)\\s+en\\s+(${nameClass})\\s+por\\s+(?:COP|\\$)`, 'i'),
+    new RegExp(`Hiciste\\s+(?:un|una)\\s+(?:pago|compra|transferencia|retiro)\\s+a\\s+(${nameClass})\\s+por\\s+(?:COP|\\$)`, 'i'),
+    new RegExp(`Pagaste\\s+(?:COP|\\$)?\\s?[\\d.,]+\\s+(?:a|en)\\s+(${nameClass})\\s+(?:con|desde|el)`, 'i'),
+    new RegExp(`Pago\\s+(?:realizado|exitoso)\\s+a\\s+(${nameClass})`, 'i'),
+    new RegExp(`(?:Recibiste|Te\\s+(?:enviaron|transfirieron|consignaron))\\s+(?:COP|\\$)?\\s?[\\d.,]+\\s+de\\s+(${nameClass})(?:\\s+(?:con|desde|el)|\\.|,|\\n)`, 'i'),
+    new RegExp(`Transferencia\\s+(?:enviada|recibida)\\s+(?:a|de)\\s+(${nameClass})(?:\\s+por|\\.|,|\\n)`, 'i'),
+    new RegExp(`compra\\s+en\\s+(${nameClass})\\s+por\\s+(?:COP|\\$)`, 'i'),
+    /comercio[:\s]+([^\n.]{3,60})/i,
+    /establecimiento[:\s]+([^\n.]{3,60})/i,
     /concepto[:\s]+([^\n.]{3,60})/i,
+    /descripci[oó]n[:\s]+([^\n.]{3,60})/i,
   ];
   for (const pattern of merchantPatterns) {
     const match = text.match(pattern);
-    if (match) return match[1].trim().substring(0, 60);
+    if (match) {
+      const merchant = match[1].trim().replace(/\s+/g, ' ');
+      if (merchant.length >= 3) return merchant.substring(0, 60);
+    }
   }
-  if (subject) {
-    const cleaned = subject.replace(/notificaci[oó]n/i, '').replace(/alerta/i, '').trim();
-    if (cleaned.length > 3) return cleaned.substring(0, 60);
-  }
-  return type === 'income' ? 'Ingreso bancario' : 'Gasto bancario';
+  const bankLabel = bank && bank !== 'Desconocido' ? ` ${bank}` : '';
+  return type === 'income' ? `Ingreso${bankLabel}` : `Gasto${bankLabel}`;
 }
 
 export async function parseEmailToTransaction(email: Record<string, any>) {
@@ -180,7 +190,7 @@ export async function parseEmailToTransaction(email: Record<string, any>) {
   const date = parseDate(fullText, emailDate);
   const category_id = inferCategory(fullText, type);
   const bank = detectBank(`${from} ${fullText}`);
-  const description = buildDescription(subject, fullText, type);
+  const description = buildDescription(subject, fullText, type, bank);
 
   return { is_transaction: true, type, amount, description, date, category_id, confidence: 0.7, bank };
 }

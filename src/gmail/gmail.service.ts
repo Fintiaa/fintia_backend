@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { createOAuth2Client, getAuthUrl } from './gmail-oauth';
 import { encrypt } from './gmail-crypto';
-import { fetchBankEmails } from './gmail-fetcher';
+import { fetchBankEmails, fetchEmailById } from './gmail-fetcher';
 import { parseEmailToTransaction } from './gmail-parser';
 import { google } from 'googleapis';
 
@@ -155,6 +155,82 @@ export class GmailService {
       success: true,
       summary: { total: newEmails.length, created, skipped, errors },
     };
+  }
+
+  async reparse(userId: string, limit = 500) {
+    const { data: connection } = await this.supabase.getClient()
+      .from('gmail_connections')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single();
+
+    if (!connection) throw new Error('Gmail no conectado');
+
+    const { data: synced } = await this.supabase.getClient()
+      .from('synced_emails')
+      .select('id, gmail_message_id, transaction_id, status')
+      .eq('user_id', userId)
+      .eq('status', 'created')
+      .not('transaction_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (!synced || synced.length === 0) {
+      return { success: true, summary: { total: 0, updated: 0, unchanged: 0, errors: 0 } };
+    }
+
+    let updated = 0, unchanged = 0, errors = 0;
+    let latestTokens: any = null;
+
+    for (const row of synced) {
+      try {
+        const { email, newTokens } = await fetchEmailById(connection, row.gmail_message_id);
+        if (newTokens) latestTokens = newTokens;
+
+        const parsed: any = await parseEmailToTransaction(email);
+        if (!parsed.is_transaction) { unchanged++; continue; }
+
+        const { data: existingTxn } = await this.supabase.getClient()
+          .from('transactions')
+          .select('id, description, category_id, amount, type')
+          .eq('id', row.transaction_id)
+          .single();
+
+        if (!existingTxn) { unchanged++; continue; }
+
+        const changes: any = {};
+        if (existingTxn.description !== parsed.description) changes.description = parsed.description;
+        if (existingTxn.category_id !== parsed.category_id) changes.category_id = parsed.category_id;
+        if (existingTxn.type !== parsed.type) changes.type = parsed.type;
+        if (Math.abs(Number(existingTxn.amount) - parsed.amount) > 0.01) changes.amount = parsed.amount;
+
+        if (Object.keys(changes).length === 0) { unchanged++; continue; }
+
+        await this.supabase.getClient()
+          .from('transactions')
+          .update(changes)
+          .eq('id', row.transaction_id);
+
+        await this.supabase.getClient()
+          .from('synced_emails')
+          .update({ parsed_data: parsed })
+          .eq('id', row.id);
+
+        updated++;
+      } catch (err: any) {
+        console.error('Reparse error for', row.gmail_message_id, err.message);
+        errors++;
+      }
+    }
+
+    if (latestTokens?.access_token) {
+      const updates: any = { access_token_encrypted: encrypt(latestTokens.access_token), updated_at: new Date().toISOString() };
+      if (latestTokens.expiry_date) updates.token_expiry = new Date(latestTokens.expiry_date).toISOString();
+      await this.supabase.getClient().from('gmail_connections').update(updates).eq('id', connection.id);
+    }
+
+    return { success: true, summary: { total: synced.length, updated, unchanged, errors } };
   }
 
   async getSyncedEmails(userId: string) {

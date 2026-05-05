@@ -75,6 +75,15 @@ export class GmailController {
     return this.gmailService.sync(userId, full === 'true');
   }
 
+  @Post('reparse')
+  async reparse(
+    @Headers('authorization') auth: string,
+    @Query('limit') limit?: string,
+  ) {
+    const userId = await this.getUserId(auth);
+    return this.gmailService.reparse(userId, limit ? parseInt(limit) : 500);
+  }
+
   @Get('synced-emails')
   async getSyncedEmails(@Headers('authorization') auth: string) {
     const userId = await this.getUserId(auth);
