@@ -26,7 +26,7 @@ export class PaymentsService {
             id: 'premium-monthly',
             title: 'Fintia Premium - Mensual',
             quantity: 1,
-            unit_price: 9.99,
+            unit_price: 1.50,
             currency_id: 'USD',
           },
         ],
