@@ -56,16 +56,19 @@ export class PaymentsService {
       const paymentClient = new Payment(client);
       const payment = await paymentClient.get({ id: body.data?.id });
 
+      console.log('[Webhook MP] payment status:', payment.status);
       if (payment.status !== 'approved') return { received: true };
 
       const userId = payment.external_reference;
+      console.log('[Webhook MP] userId:', userId);
       if (!userId) return { received: true };
 
-      await this.supabase
+      const { error } = await this.supabase
         .getClient()
         .from('profiles')
         .update({ subscription_tier: 'premium' })
         .eq('id', userId);
+      console.log('[Webhook MP] update error:', error);
     } catch (err: any) {
       console.log('[Webhook MP Error]', err?.message);
     }
