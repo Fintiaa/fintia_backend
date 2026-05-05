@@ -45,6 +45,7 @@ export class PaymentsService {
   }
 
   async handleWebhook(body: any) {
+    console.log('[Webhook MP]', JSON.stringify(body));
     if (body.type !== 'payment') return { received: true };
 
     try {
@@ -65,8 +66,8 @@ export class PaymentsService {
         .from('profiles')
         .update({ subscription_tier: 'premium' })
         .eq('id', userId);
-    } catch {
-      // ID inválido o error de MP — no crashear
+    } catch (err: any) {
+      console.log('[Webhook MP Error]', err?.message);
     }
 
     return { received: true };
