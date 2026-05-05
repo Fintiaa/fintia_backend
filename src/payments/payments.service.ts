@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import MercadoPago, { Preference } from 'mercadopago';
@@ -47,23 +47,27 @@ export class PaymentsService {
   async handleWebhook(body: any) {
     if (body.type !== 'payment') return { received: true };
 
-    const { MercadoPagoConfig, Payment } = await import('mercadopago');
-    const client = new MercadoPagoConfig({
-      accessToken: this.config.get<string>('MP_ACCESS_TOKEN') as string,
-    });
-    const paymentClient = new Payment(client);
-    const payment = await paymentClient.get({ id: body.data?.id });
+    try {
+      const { MercadoPagoConfig, Payment } = await import('mercadopago');
+      const client = new MercadoPagoConfig({
+        accessToken: this.config.get<string>('MP_ACCESS_TOKEN') as string,
+      });
+      const paymentClient = new Payment(client);
+      const payment = await paymentClient.get({ id: body.data?.id });
 
-    if (payment.status !== 'approved') return { received: true };
+      if (payment.status !== 'approved') return { received: true };
 
-    const userId = payment.external_reference;
-    if (!userId) throw new BadRequestException('Missing external_reference');
+      const userId = payment.external_reference;
+      if (!userId) return { received: true };
 
-    await this.supabase
-      .getClient()
-      .from('profiles')
-      .update({ subscription_tier: 'premium' })
-      .eq('id', userId);
+      await this.supabase
+        .getClient()
+        .from('profiles')
+        .update({ subscription_tier: 'premium' })
+        .eq('id', userId);
+    } catch {
+      // ID inválido o error de MP — no crashear
+    }
 
     return { received: true };
   }
