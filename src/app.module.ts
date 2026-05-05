@@ -11,11 +11,13 @@ import { ProfileModule } from './profile/profile.module';
 import { GmailModule } from './gmail/gmail.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { AiModule } from './ai/ai.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     SupabaseModule,
+    PaymentsModule,
     TransactionsModule,
     CategoriesModule,
     BudgetsModule,
