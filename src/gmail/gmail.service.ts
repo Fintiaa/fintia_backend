@@ -77,13 +77,16 @@ export class GmailService {
       .eq('user_id', userId);
 
     const isFirstSync = (syncedCount || 0) < 5 || forceFullSync;
+    const toGmailDate = (ms: number) =>
+      new Date(ms).toISOString().split('T')[0].replace(/-/g, '/');
+    const overlapMs = 3 * 24 * 60 * 60 * 1000;
     const sinceDate = isFirstSync
-      ? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0].replace(/-/g, '/')
+      ? toGmailDate(Date.now() - 365 * 24 * 60 * 60 * 1000)
       : connection.last_sync_at
-        ? new Date(connection.last_sync_at).toISOString().split('T')[0].replace(/-/g, '/')
-        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0].replace(/-/g, '/');
+        ? toGmailDate(new Date(connection.last_sync_at).getTime() - overlapMs)
+        : toGmailDate(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    const { emails, newTokens } = await fetchBankEmails(connection, sinceDate, isFirstSync ? 200 : 50);
+    const { emails, newTokens } = await fetchBankEmails(connection, sinceDate, isFirstSync ? 1000 : 300);
 
     const { data: existingSynced } = await this.supabase.getClient()
       .from('synced_emails')

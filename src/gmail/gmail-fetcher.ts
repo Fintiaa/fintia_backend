@@ -27,25 +27,59 @@ export async function fetchBankEmails(
 
   const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
   const senderQuery = BANK_SENDER_DOMAINS.map((d) => `from:${d}`).join(' OR ');
-  let query = `(${senderQuery})`;
+  const promoExclusions = [
+    'category:promotions', 'category:social',
+    '"oferta"', '"ofertas"', '"preaprobado"', '"pre-aprobado"', '"pre aprobado"',
+    '"cupo disponible"', '"aumento de cupo"', '"tarjeta de crédito aprobada"',
+    '"crédito preaprobado"', '"credito preaprobado"', '"libranza"',
+    '"libre inversión"', '"libre inversion"', '"tasa preferencial"',
+    '"promoción"', '"promocion"', '"newsletter"', '"boletín"', '"boletin"',
+    '"estado de cuenta"', '"extracto"',
+  ];
+  const exclusionQuery = promoExclusions.map((t) => `-${t}`).join(' ');
+  let query = `(${senderQuery}) ${exclusionQuery}`;
   if (sinceDate) query += ` after:${sinceDate}`;
 
-  const res = await gmail.users.messages.list({ userId: 'me', q: query, maxResults });
+  const messageIds: string[] = [];
+  let pageToken: string | undefined;
+  const pageSize = 100;
 
-  if (!res.data.messages) return { emails: [], newTokens };
+  do {
+    const res: any = await gmail.users.messages.list({
+      userId: 'me',
+      q: query,
+      maxResults: Math.min(pageSize, maxResults - messageIds.length),
+      pageToken,
+    });
+    if (res.data.messages) {
+      for (const m of res.data.messages) {
+        if (m.id) messageIds.push(m.id);
+        if (messageIds.length >= maxResults) break;
+      }
+    }
+    pageToken = res.data.nextPageToken || undefined;
+  } while (pageToken && messageIds.length < maxResults);
 
-  const emails = await Promise.all(
-    res.data.messages.map(async (msg) => {
-      const full = await gmail.users.messages.get({ userId: 'me', id: msg.id!, format: 'full' });
-      return {
-        id: msg.id,
-        headers: full.data.payload!.headers,
-        snippet: full.data.snippet,
-        body: extractBody(full.data.payload!),
-        internalDate: full.data.internalDate,
-      };
-    }),
-  );
+  if (messageIds.length === 0) return { emails: [], newTokens };
+
+  const emails: any[] = [];
+  const concurrency = 10;
+  for (let i = 0; i < messageIds.length; i += concurrency) {
+    const batch = messageIds.slice(i, i + concurrency);
+    const results = await Promise.all(
+      batch.map(async (id) => {
+        const full = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+        return {
+          id,
+          headers: full.data.payload!.headers,
+          snippet: full.data.snippet,
+          body: extractBody(full.data.payload!),
+          internalDate: full.data.internalDate,
+        };
+      }),
+    );
+    emails.push(...results);
+  }
 
   return { emails, newTokens };
 }

@@ -9,6 +9,23 @@ const AMOUNT_PATTERNS = [
   /total[:\s]+\$?\s?([\d.,]+)/i,
 ];
 
+const PROMO_KEYWORDS = [
+  /oferta/i, /ofertas/i, /pre[-\s]?aprobado/i, /preaprobada/i,
+  /cupo disponible/i, /aumento de cupo/i, /tarjeta de cr[eé]dito aprobada/i,
+  /cr[eé]dito preaprobado/i, /libranza/i, /libre inversi[oó]n/i,
+  /tasa preferencial/i, /promoci[oó]n/i, /promocional/i,
+  /newsletter/i, /bolet[ií]n/i, /estado de cuenta/i, /extracto/i,
+  /te invitamos/i, /aprovecha/i, /descuento especial/i,
+  /solicita ya/i, /solicítalo/i, /solicitalo/i,
+];
+
+const TRANSACTION_KEYWORDS = [
+  /compra/i, /pago/i, /retiro/i, /cargo/i, /cobro/i, /débito/i, /debito/i,
+  /transferencia/i, /enviaste/i, /recibiste/i, /abono/i, /dep[oó]sito/i,
+  /consignaci[oó]n/i, /transfiya/i, /pse/i, /nequi/i, /realizaste/i,
+  /movimiento/i, /transacci[oó]n/i,
+];
+
 const EXPENSE_KEYWORDS = [
   /compra/i, /pago/i, /retiro/i, /cargo/i, /cobro/i,
   /transferencia enviada/i, /enviaste/i, /débito/i, /debito/i,
@@ -148,8 +165,16 @@ export async function parseEmailToTransaction(email: Record<string, any>) {
   const emailDate = email.headers?.find((h: any) => h.name === 'Date')?.value || '';
   const fullText = `${subject} ${email.body || ''} ${email.snippet || ''}`;
 
+  if (PROMO_KEYWORDS.some((kw) => kw.test(fullText))) {
+    return { is_transaction: false, reason: 'promotional' };
+  }
+
+  if (!TRANSACTION_KEYWORDS.some((kw) => kw.test(fullText))) {
+    return { is_transaction: false, reason: 'no_transaction_keyword' };
+  }
+
   const amount = parseAmount(fullText);
-  if (!amount) return { is_transaction: false };
+  if (!amount) return { is_transaction: false, reason: 'no_amount' };
 
   const type = parseType(fullText);
   const date = parseDate(fullText, emailDate);
