@@ -18,12 +18,12 @@ export class PaymentsService {
     this.preApproval = new PreApproval(this.mp);
   }
 
-  async createCheckout(userId: string, frontendUrl: string) {
+  async createCheckout(userId: string, payerEmail: string, frontendUrl: string) {
     const result = await this.preApproval.create({
       body: {
         reason: 'Fintia Premium - Mensual',
         external_reference: userId,
-        payer_email: undefined,
+        payer_email: payerEmail,
         auto_recurring: {
           frequency: 1,
           frequency_type: 'months',
