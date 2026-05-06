@@ -80,4 +80,58 @@ export class AiService {
 
     return parsed;
   }
+
+  async generateInsights(transactions: any[], stats: any) {
+    if (!process.env.GROQ_API_KEY) throw new Error('GROQ_API_KEY no configurada');
+
+    const totalIncome = stats?.income ?? 0;
+    const totalExpenses = stats?.expenses ?? 0;
+    const balance = stats?.balance ?? 0;
+
+    const summary = `
+Ingresos del mes: $${totalIncome.toLocaleString('es-CO')} COP
+Gastos del mes: $${totalExpenses.toLocaleString('es-CO')} COP
+Balance: $${balance.toLocaleString('es-CO')} COP
+Número de transacciones: ${transactions.length}
+Top categorías por gasto: ${
+      Object.entries(
+        transactions
+          .filter((t) => t.type === 'expense')
+          .reduce((acc: Record<string, number>, t) => {
+            const cat = t.category?.name || 'Otros';
+            acc[cat] = (acc[cat] || 0) + Number(t.amount);
+            return acc;
+          }, {}),
+      )
+        .sort((a, b) => (b[1] as number) - (a[1] as number))
+        .slice(0, 4)
+        .map(([cat, amt]) => `${cat}: $${(amt as number).toLocaleString('es-CO')}`)
+        .join(', ') || 'Sin datos'
+    }
+`.trim();
+
+    const completion = await this.groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: 'system',
+          content: `Eres Fintia, una asistente financiera colombiana con mucho humor y personalidad.
+Analiza los datos financieros del usuario y genera exactamente 4 insights en JSON.
+Usa jerga colombiana casual y algo de humor (sin ser ofensiva). Sé directa y útil.
+Cada insight tiene: title (máx 6 palabras), detail (1-2 oraciones con humor y consejo real), icon (1 emoji), type ("good" | "warning" | "tip" | "bad").
+
+RESPONDE ÚNICAMENTE con un array JSON válido, sin markdown:
+[{"title":"...","detail":"...","icon":"...","type":"..."}]`,
+        },
+        { role: 'user', content: summary },
+      ],
+      max_tokens: 800,
+      temperature: 0.7,
+    });
+
+    const text = completion.choices[0].message.content!.trim();
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error('No encontré JSON en la respuesta');
+    return JSON.parse(jsonMatch[0]);
+  }
 }
