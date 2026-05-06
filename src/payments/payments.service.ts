@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
-import MercadoPago, { Preference } from 'mercadopago';
+import MercadoPago, { PreApproval } from 'mercadopago';
 
 @Injectable()
 export class PaymentsService {
   private mp: MercadoPago;
-  private preference: Preference;
+  private preApproval: PreApproval;
 
   constructor(
     private readonly config: ConfigService,
@@ -15,29 +15,23 @@ export class PaymentsService {
     this.mp = new MercadoPago({
       accessToken: this.config.get<string>('MP_ACCESS_TOKEN') as string,
     });
-    this.preference = new Preference(this.mp);
+    this.preApproval = new PreApproval(this.mp);
   }
 
   async createCheckout(userId: string, frontendUrl: string) {
-    const result = await this.preference.create({
+    const result = await this.preApproval.create({
       body: {
-        items: [
-          {
-            id: 'premium-monthly',
-            title: 'Fintia Premium - Mensual',
-            quantity: 1,
-            unit_price: 2000,
-            currency_id: 'COP',
-          },
-        ],
-        back_urls: {
-          success: `${frontendUrl}/es/dashboard/settings?payment=success`,
-          failure: `${frontendUrl}/es/dashboard/settings?payment=failure`,
-          pending: `${frontendUrl}/es/dashboard/settings?payment=pending`,
-        },
-        auto_return: 'approved',
+        reason: 'Fintia Premium - Mensual',
         external_reference: userId,
-        notification_url: `${this.config.get('BACKEND_URL')}/payments/webhook`,
+        payer_email: undefined,
+        auto_recurring: {
+          frequency: 1,
+          frequency_type: 'months',
+          transaction_amount: 2000,
+          currency_id: 'COP',
+        },
+        back_url: `${frontendUrl}/es/dashboard/settings?payment=success`,
+        status: 'pending',
       },
     });
 
@@ -46,29 +40,31 @@ export class PaymentsService {
 
   async handleWebhook(body: any) {
     console.log('[Webhook MP]', JSON.stringify(body));
-    if (body.type !== 'payment') return { received: true };
 
     try {
-      const { MercadoPagoConfig, Payment } = await import('mercadopago');
+      const { MercadoPagoConfig, PreApproval: PreApprovalClient } = await import('mercadopago');
       const client = new MercadoPagoConfig({
         accessToken: this.config.get<string>('MP_ACCESS_TOKEN') as string,
       });
-      const paymentClient = new Payment(client);
-      const payment = await paymentClient.get({ id: body.data?.id });
 
-      console.log('[Webhook MP] payment status:', payment.status);
-      if (payment.status !== 'approved') return { received: true };
+      if (body.type === 'subscription_preapproval') {
+        const preApprovalClient = new PreApprovalClient(client);
+        const subscription = await preApprovalClient.get({ id: body.data?.id });
 
-      const userId = payment.external_reference;
-      console.log('[Webhook MP] userId:', userId);
-      if (!userId) return { received: true };
+        console.log('[Webhook MP] subscription status:', subscription.status);
+        if (subscription.status !== 'authorized') return { received: true };
 
-      const { error } = await this.supabase
-        .getClient()
-        .from('profiles')
-        .update({ subscription_tier: 'premium' })
-        .eq('id', userId);
-      console.log('[Webhook MP] update error:', error);
+        const userId = subscription.external_reference;
+        console.log('[Webhook MP] userId:', userId);
+        if (!userId) return { received: true };
+
+        const { error } = await this.supabase
+          .getClient()
+          .from('profiles')
+          .update({ subscription_tier: 'premium' })
+          .eq('id', userId);
+        console.log('[Webhook MP] update error:', error);
+      }
     } catch (err: any) {
       console.log('[Webhook MP Error]', err?.message);
     }
