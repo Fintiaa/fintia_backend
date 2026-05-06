@@ -24,6 +24,12 @@ export class PaymentsController {
     return this.paymentsService.createCheckout(user.id, user.email!, frontendUrl);
   }
 
+  @Post('cancel')
+  async cancel(@Headers('authorization') auth: string) {
+    const user = await this.getUser(auth);
+    return this.paymentsService.cancelSubscription(user.id);
+  }
+
   @Post('webhook')
   async webhook(@Body() body: any) {
     return this.paymentsService.handleWebhook(body);

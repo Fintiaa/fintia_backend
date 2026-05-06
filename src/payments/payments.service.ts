@@ -38,6 +38,38 @@ export class PaymentsService {
     return { checkoutUrl: result.init_point };
   }
 
+  async cancelSubscription(userId: string) {
+    const { data: profile } = await this.supabase
+      .getClient()
+      .from('profiles')
+      .select('mp_subscription_id')
+      .eq('id', userId)
+      .single();
+
+    if (!profile?.mp_subscription_id) {
+      throw new Error('No hay suscripción activa');
+    }
+
+    const { MercadoPagoConfig, PreApproval: PreApprovalClient } = await import('mercadopago');
+    const client = new MercadoPagoConfig({
+      accessToken: this.config.get<string>('MP_ACCESS_TOKEN') as string,
+    });
+    const preApprovalClient = new PreApprovalClient(client);
+
+    await preApprovalClient.update({
+      id: profile.mp_subscription_id,
+      body: { status: 'cancelled' },
+    });
+
+    await this.supabase
+      .getClient()
+      .from('profiles')
+      .update({ subscription_tier: 'free', mp_subscription_id: null })
+      .eq('id', userId);
+
+    return { cancelled: true };
+  }
+
   async handleWebhook(body: any) {
     console.log('[Webhook MP]', JSON.stringify(body));
 
@@ -61,7 +93,7 @@ export class PaymentsService {
         const { error } = await this.supabase
           .getClient()
           .from('profiles')
-          .update({ subscription_tier: 'premium' })
+          .update({ subscription_tier: 'premium', mp_subscription_id: subscription.id })
           .eq('id', userId);
         console.log('[Webhook MP] update error:', error);
       }
