@@ -7,11 +7,23 @@ import { UpdateTransactionDto } from './dto/update-transaction.dto';
 export class TransactionsService {
   constructor(private readonly supabase: SupabaseService) {}
 
+  private async attachCategories(userId: string, transactions: any[]) {
+    if (!transactions.length) return transactions;
+    const { data: cats } = await this.supabase
+      .getClient()
+      .from('categories')
+      .select('id, name, icon, color')
+      .or(`user_id.eq.${userId},is_default.eq.true`);
+    const catMap: Record<string, any> = {};
+    for (const c of cats || []) catMap[c.id] = c;
+    return transactions.map((tx) => ({ ...tx, category: catMap[tx.category_id] ?? null }));
+  }
+
   async findAll(userId: string, filters: Record<string, string | undefined> = {}) {
     const client = this.supabase.getClient();
     let query = client
       .from('transactions')
-      .select('*, category:categories(id, name, icon, color)')
+      .select('*')
       .eq('user_id', userId)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false });
@@ -20,23 +32,25 @@ export class TransactionsService {
     if (filters.category_id) query = query.eq('category_id', filters.category_id);
     if (filters.from) query = query.gte('date', filters.from);
     if (filters.to) query = query.lte('date', filters.to);
+    if (filters.limit) query = query.limit(Number(filters.limit));
 
     const { data, error } = await query;
     if (error) throw error;
-    return data || [];
+    return this.attachCategories(userId, data || []);
   }
 
   async findOne(id: string, userId: string) {
     const { data, error } = await this.supabase
       .getClient()
       .from('transactions')
-      .select('*, category:categories(id, name, icon, color)')
+      .select('*')
       .eq('id', id)
       .eq('user_id', userId)
       .single();
 
     if (error || !data) throw new NotFoundException('Transacción no encontrada');
-    return data;
+    const [withCat] = await this.attachCategories(userId, [data]);
+    return withCat;
   }
 
   async create(userId: string, dto: CreateTransactionDto) {
