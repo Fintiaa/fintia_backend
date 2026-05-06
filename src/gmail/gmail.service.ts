@@ -96,7 +96,7 @@ export class GmailService {
     const existingIds = new Set((existingSynced || []).map((e: any) => e.gmail_message_id));
     const newEmails = emails.filter((e: any) => !existingIds.has(e.id));
 
-    let created = 0, skipped = 0, errors = 0;
+    let pending = 0, skipped = 0, errors = 0;
 
     for (const email of newEmails) {
       try {
@@ -115,25 +115,13 @@ export class GmailService {
           continue;
         }
 
-        const { data: txn, error: txnError } = await this.supabase.getClient()
-          .from('transactions')
-          .insert({
-            user_id: userId, type: parsed.type, amount: parsed.amount,
-            category_id: parsed.category_id, description: parsed.description,
-            date: parsed.date, source: 'email',
-            metadata: { gmail_message_id: email.id, bank: parsed.bank, confidence: parsed.confidence },
-          })
-          .select().single();
-
-        if (txnError) throw txnError;
-
         await this.supabase.getClient().from('synced_emails').insert({
           user_id: userId, gmail_message_id: email.id, subject, sender: from,
           received_at: new Date(parseInt(email.internalDate ?? '0')).toISOString(),
           raw_snippet: email.snippet?.substring(0, 200),
-          parsed_data: parsed, transaction_id: txn.id, status: 'created',
+          parsed_data: parsed, status: 'pending',
         });
-        created++;
+        pending++;
       } catch (err: any) {
         await this.supabase.getClient().from('synced_emails').insert({
           user_id: userId, gmail_message_id: email.id,
@@ -153,8 +141,69 @@ export class GmailService {
 
     return {
       success: true,
-      summary: { total: newEmails.length, created, skipped, errors },
+      summary: { total: newEmails.length, pending, skipped, errors },
     };
+  }
+
+  async getPending(userId: string) {
+    const { data } = await this.supabase.getClient()
+      .from('synced_emails')
+      .select('id, gmail_message_id, subject, sender, received_at, raw_snippet, parsed_data, created_at')
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .order('received_at', { ascending: false });
+    return data || [];
+  }
+
+  async approvePending(userId: string, syncedEmailId: string, overrides?: any) {
+    const { data: row, error: rowError } = await this.supabase.getClient()
+      .from('synced_emails')
+      .select('*')
+      .eq('id', syncedEmailId)
+      .eq('user_id', userId)
+      .eq('status', 'pending')
+      .single();
+
+    if (rowError || !row) throw new Error('Pendiente no encontrada');
+
+    const parsed = row.parsed_data || {};
+    const txnData = {
+      user_id: userId,
+      type: overrides?.type ?? parsed.type,
+      amount: overrides?.amount ?? parsed.amount,
+      category_id: overrides?.category_id ?? parsed.category_id,
+      description: overrides?.description ?? parsed.description,
+      date: overrides?.date ?? parsed.date,
+      source: 'email',
+      metadata: { gmail_message_id: row.gmail_message_id, bank: parsed.bank, confidence: parsed.confidence },
+    };
+
+    const { data: txn, error: txnError } = await this.supabase.getClient()
+      .from('transactions')
+      .insert(txnData)
+      .select()
+      .single();
+
+    if (txnError) throw txnError;
+
+    await this.supabase.getClient()
+      .from('synced_emails')
+      .update({ status: 'created', transaction_id: txn.id })
+      .eq('id', syncedEmailId);
+
+    return { success: true, transaction: txn };
+  }
+
+  async rejectPending(userId: string, syncedEmailId: string) {
+    const { error } = await this.supabase.getClient()
+      .from('synced_emails')
+      .update({ status: 'rejected' })
+      .eq('id', syncedEmailId)
+      .eq('user_id', userId)
+      .eq('status', 'pending');
+
+    if (error) throw error;
+    return { success: true };
   }
 
   async reparse(userId: string, limit = 500) {

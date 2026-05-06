@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Delete, Query, Req,
+  Controller, Get, Post, Delete, Query, Req, Param, Body,
   Headers, UnauthorizedException, Res,
 } from '@nestjs/common';
 import { GmailService } from './gmail.service';
@@ -73,6 +73,31 @@ export class GmailController {
   ) {
     const userId = await this.getUserId(auth);
     return this.gmailService.sync(userId, full === 'true');
+  }
+
+  @Get('pending')
+  async getPending(@Headers('authorization') auth: string) {
+    const userId = await this.getUserId(auth);
+    return this.gmailService.getPending(userId);
+  }
+
+  @Post('pending/:id/approve')
+  async approvePending(
+    @Headers('authorization') auth: string,
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    const userId = await this.getUserId(auth);
+    return this.gmailService.approvePending(userId, id, body);
+  }
+
+  @Post('pending/:id/reject')
+  async rejectPending(
+    @Headers('authorization') auth: string,
+    @Param('id') id: string,
+  ) {
+    const userId = await this.getUserId(auth);
+    return this.gmailService.rejectPending(userId, id);
   }
 
   @Post('reparse')
