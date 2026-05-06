@@ -11,7 +11,7 @@ export class TransactionsService {
     const client = this.supabase.getClient();
     let query = client
       .from('transactions')
-      .select('*')
+      .select('*, category:categories(id, name, icon, color)')
       .eq('user_id', userId)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false });
@@ -30,7 +30,7 @@ export class TransactionsService {
     const { data, error } = await this.supabase
       .getClient()
       .from('transactions')
-      .select('*')
+      .select('*, category:categories(id, name, icon, color)')
       .eq('id', id)
       .eq('user_id', userId)
       .single();
