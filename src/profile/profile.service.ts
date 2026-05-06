@@ -14,6 +14,21 @@ export class ProfileService {
       .single();
 
     if (error) throw error;
+
+    // Auto-downgrade if subscription_expires_at is in the past
+    if (
+      data?.subscription_tier === 'premium' &&
+      data?.subscription_expires_at &&
+      new Date(data.subscription_expires_at) < new Date()
+    ) {
+      await this.supabase
+        .getClient()
+        .from('profiles')
+        .update({ subscription_tier: 'free', subscription_expires_at: null })
+        .eq('id', userId);
+      return { ...data, subscription_tier: 'free', subscription_expires_at: null };
+    }
+
     return data;
   }
 

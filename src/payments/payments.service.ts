@@ -46,28 +46,37 @@ export class PaymentsService {
       .eq('id', userId)
       .single();
 
-    if (!profile?.mp_subscription_id) {
-      throw new Error('No hay suscripción activa');
+    // Cancel in MP only if we have the subscription ID
+    if (profile?.mp_subscription_id) {
+      try {
+        const { MercadoPagoConfig, PreApproval: PreApprovalClient } = await import('mercadopago');
+        const client = new MercadoPagoConfig({
+          accessToken: this.config.get<string>('MP_ACCESS_TOKEN') as string,
+        });
+        const preApprovalClient = new PreApprovalClient(client);
+        await preApprovalClient.update({
+          id: profile.mp_subscription_id,
+          body: { status: 'cancelled' },
+        });
+      } catch (err: any) {
+        console.log('[Cancel] MP cancel error (non-fatal):', err?.message);
+      }
     }
 
-    const { MercadoPagoConfig, PreApproval: PreApprovalClient } = await import('mercadopago');
-    const client = new MercadoPagoConfig({
-      accessToken: this.config.get<string>('MP_ACCESS_TOKEN') as string,
-    });
-    const preApprovalClient = new PreApprovalClient(client);
-
-    await preApprovalClient.update({
-      id: profile.mp_subscription_id,
-      body: { status: 'cancelled' },
-    });
+    // Keep premium tier but set expiry 30 days from now
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
 
     await this.supabase
       .getClient()
       .from('profiles')
-      .update({ subscription_tier: 'free', mp_subscription_id: null })
+      .update({
+        mp_subscription_id: null,
+        subscription_expires_at: expiresAt.toISOString(),
+      })
       .eq('id', userId);
 
-    return { cancelled: true };
+    return { cancelled: true, expiresAt: expiresAt.toISOString() };
   }
 
   async handleWebhook(body: any) {
@@ -93,7 +102,7 @@ export class PaymentsService {
         const { error } = await this.supabase
           .getClient()
           .from('profiles')
-          .update({ subscription_tier: 'premium', mp_subscription_id: subscription.id })
+          .update({ subscription_tier: 'premium', mp_subscription_id: subscription.id, subscription_expires_at: null })
           .eq('id', userId);
         console.log('[Webhook MP] update error:', error);
       }
