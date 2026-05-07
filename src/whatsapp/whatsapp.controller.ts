@@ -115,7 +115,8 @@ export class WhatsappController {
       });
 
     if (txError) {
-      this.logger.error('Transaction insert error', txError);
+      this.logger.error('Transaction insert error', JSON.stringify(txError));
+      this.logger.error('Payload:', JSON.stringify({ userId, amount: parsed.amount, type: parsed.type, categoryId, date: parsed.date || today }));
       await this.whatsapp.sendMessage(from, '❌ Hubo un error guardando la transacción. Intenta de nuevo.');
       return { status: 'db_error' };
     }
