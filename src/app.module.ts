@@ -12,6 +12,7 @@ import { GmailModule } from './gmail/gmail.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { AiModule } from './ai/ai.module';
 import { PaymentsModule } from './payments/payments.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { PaymentsModule } from './payments/payments.module';
     GmailModule,
     RemindersModule,
     AiModule,
+    WhatsappModule,
   ],
 })
 export class AppModule {}
