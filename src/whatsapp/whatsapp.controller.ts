@@ -87,6 +87,12 @@ export class WhatsappController {
       return { status: 'ai_error' };
     }
 
+    // Validate parsed result
+    if (!parsed.type || !parsed.amount || parsed.amount <= 0) {
+      await this.whatsapp.sendMessage(from, '🤔 No entendí bien el monto o el tipo de transacción. Intenta algo como: _"gasté 5 mil en comida"_ o _"me pagaron 500 mil de salario"_');
+      return { status: 'invalid_parse' };
+    }
+
     // Resolve category slug → UUID
     const { data: cats } = await this.supabase
       .getClient()
