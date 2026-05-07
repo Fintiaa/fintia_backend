@@ -81,6 +81,21 @@ export class AiService {
     return parsed;
   }
 
+  async transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string> {
+    if (!process.env.GROQ_API_KEY) throw new Error('GROQ_API_KEY no configurada');
+
+    const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'mp4' : mimeType.includes('mpeg') || mimeType.includes('mp3') ? 'mp3' : 'wav';
+    const file = new File([audioBuffer.buffer.slice(audioBuffer.byteOffset, audioBuffer.byteOffset + audioBuffer.byteLength) as ArrayBuffer], `audio.${ext}`, { type: mimeType });
+
+    const transcription = await this.groq.audio.transcriptions.create({
+      file,
+      model: 'whisper-large-v3-turbo',
+      language: 'es',
+    });
+
+    return transcription.text;
+  }
+
   async generateInsights(transactions: any[], stats: any) {
     if (!process.env.GROQ_API_KEY) throw new Error('GROQ_API_KEY no configurada');
 

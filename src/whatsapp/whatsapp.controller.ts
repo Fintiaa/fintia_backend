@@ -70,15 +70,27 @@ export class WhatsappController {
     // Parse with AI
     let parsed: any;
     try {
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+      const basicAuth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+
       if (mediaUrl && mediaType?.startsWith('image/')) {
-        const imgResp = await fetch(mediaUrl);
+        await this.whatsapp.sendMessage(from, '🧾 Analizando tu factura...');
+        const imgResp = await fetch(mediaUrl, { headers: { Authorization: `Basic ${basicAuth}` } });
         const buffer = await imgResp.arrayBuffer();
         const base64 = Buffer.from(buffer).toString('base64');
         parsed = await this.ai.parseTransaction(undefined, base64, mediaType);
+      } else if (mediaUrl && mediaType?.startsWith('audio/')) {
+        await this.whatsapp.sendMessage(from, '🎙️ Escuchando tu nota de voz...');
+        const audioResp = await fetch(mediaUrl, { headers: { Authorization: `Basic ${basicAuth}` } });
+        const buffer = Buffer.from(await audioResp.arrayBuffer());
+        const transcription = await this.ai.transcribeAudio(buffer, mediaType);
+        this.logger.log(`Transcripción: "${transcription}"`);
+        parsed = await this.ai.parseTransaction(transcription);
       } else if (text) {
         parsed = await this.ai.parseTransaction(text);
       } else {
-        await this.whatsapp.sendMessage(from, 'No entendí tu mensaje. Escríbeme el gasto o ingreso en texto o envía una foto de la factura 📸');
+        await this.whatsapp.sendMessage(from, 'No entendí tu mensaje. Escríbeme el gasto, envía una foto de la factura 📸 o una nota de voz 🎙️');
         return { status: 'empty' };
       }
     } catch (err) {
