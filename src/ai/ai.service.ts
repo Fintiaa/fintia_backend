@@ -103,26 +103,55 @@ export class AiService {
     const totalExpenses = stats?.expenses ?? 0;
     const balance = stats?.balance ?? 0;
 
+    const expensesByCategory = Object.entries(
+      transactions
+        .filter((t) => t.type === 'expense')
+        .reduce((acc: Record<string, number>, t) => {
+          const cat = t.category?.name || t.category_id || 'Otros';
+          acc[cat] = (acc[cat] || 0) + Number(t.amount);
+          return acc;
+        }, {}),
+    )
+      .sort((a, b) => (b[1] as number) - (a[1] as number));
+
+    const topCategories = expensesByCategory
+      .slice(0, 6)
+      .map(([cat, amt]) => `  - ${cat}: $${(amt as number).toLocaleString('es-CO')} COP`)
+      .join('\n') || '  - Sin datos';
+
+    // Count transactions per category for frequency insight
+    const freqByCategory = transactions
+      .filter((t) => t.type === 'expense')
+      .reduce((acc: Record<string, number>, t) => {
+        const cat = t.category?.name || t.category_id || 'Otros';
+        acc[cat] = (acc[cat] || 0) + 1;
+        return acc;
+      }, {});
+    const mostFrequent = Object.entries(freqByCategory)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .slice(0, 3)
+      .map(([cat, count]) => `${cat} (${count} veces)`)
+      .join(', ') || 'Sin datos';
+
+    const savingsRate = totalIncome > 0 ? Math.round(((totalIncome - totalExpenses) / totalIncome) * 100) : 0;
+    const avgPerTransaction = transactions.filter((t) => t.type === 'expense').length > 0
+      ? Math.round(totalExpenses / transactions.filter((t) => t.type === 'expense').length)
+      : 0;
+
     const summary = `
-Ingresos del mes: $${totalIncome.toLocaleString('es-CO')} COP
-Gastos del mes: $${totalExpenses.toLocaleString('es-CO')} COP
-Balance: $${balance.toLocaleString('es-CO')} COP
-Número de transacciones: ${transactions.length}
-Top categorías por gasto: ${
-      Object.entries(
-        transactions
-          .filter((t) => t.type === 'expense')
-          .reduce((acc: Record<string, number>, t) => {
-            const cat = t.category?.name || 'Otros';
-            acc[cat] = (acc[cat] || 0) + Number(t.amount);
-            return acc;
-          }, {}),
-      )
-        .sort((a, b) => (b[1] as number) - (a[1] as number))
-        .slice(0, 4)
-        .map(([cat, amt]) => `${cat}: $${(amt as number).toLocaleString('es-CO')}`)
-        .join(', ') || 'Sin datos'
-    }
+RESUMEN FINANCIERO DEL MES:
+- Ingresos: $${totalIncome.toLocaleString('es-CO')} COP
+- Gastos: $${totalExpenses.toLocaleString('es-CO')} COP
+- Balance: $${balance.toLocaleString('es-CO')} COP (${balance >= 0 ? 'POSITIVO ✅' : 'NEGATIVO ❌'})
+- Tasa de ahorro: ${savingsRate}%
+- Total de transacciones: ${transactions.length} (${transactions.filter((t) => t.type === 'expense').length} gastos, ${transactions.filter((t) => t.type === 'income').length} ingresos)
+- Gasto promedio por transacción: $${avgPerTransaction.toLocaleString('es-CO')} COP
+
+TOP CATEGORÍAS DE GASTO (de mayor a menor):
+${topCategories}
+
+CATEGORÍAS MÁS FRECUENTES (por número de transacciones):
+  ${mostFrequent}
 `.trim();
 
     const completion = await this.groq.chat.completions.create({
@@ -130,18 +159,33 @@ Top categorías por gasto: ${
       messages: [
         {
           role: 'system',
-          content: `Eres Fintia, una asistente financiera colombiana con mucho humor y personalidad.
-Analiza los datos financieros del usuario y genera exactamente 4 insights en JSON.
-Usa jerga colombiana casual y algo de humor (sin ser ofensiva). Sé directa y útil.
-Cada insight tiene: title (máx 6 palabras), detail (1-2 oraciones con humor y consejo real), icon (1 emoji), type ("good" | "warning" | "tip" | "bad").
+          content: `Eres Fintia, una asistente financiera colombiana con mucho humor y personalidad. Eres como la amiga financiera que todo el mundo quisiera tener: divertida, positiva y útil.
+
+Genera exactamente 4 insights basados en los datos. Usa jerga colombiana casual ("parcero/a", "¡uy!", "qué chimba", "juicioso/a", etc.).
+
+REGLAS IMPORTANTES:
+- Basa los insights en PATRONES y TENDENCIAS (frecuencia, montos, categorías más usadas), no en opinar si una categoría es válida o no.
+- NUNCA juzgues el estilo de vida: mascotas, entretenimiento, ropa, restaurantes, etc. son gastos completamente válidos.
+- Si el usuario gastó mucho en una categoría (ej. café, ropa), dilo con humor positivo: "¡Los cafés se te pegaron este mes!" no "¿Es necesario tanto café?".
+- Incluye al menos 1 insight positivo/celebración si el balance es bueno o los gastos bajaron.
+- Si el balance es positivo o el ahorro es bueno, celebra con energía.
+- Los tips deben ser CONCRETOS y accionables (ej. "Llevas X en [categoría] este mes, considera un presupuesto de Y").
+
+Ejemplos de buenos insights:
+- "¡Le metiste al café!" → "Llevas $180.000 en café este mes, ¡eres todo un barista! Si quieres ahorrar, trae tinto de la casa un par de días."
+- "Semana juiciosa 🎉" → "Esta semana gastaste un 30% menos que la anterior. ¡Así se hace, parcero/a!"
+- "Ropa al poder" → "Tu categoría de ropa fue la reina del mes con $450.000. Sin drama, pero quizás el mes que viene le das un descanso al carrito."
+- "Balance positivo 💚" → "¡Cerraste el mes con más plata de la que entraste! Eso es disciplina pura, sigue así."
+
+Cada insight: title (máx 6 palabras), detail (1-2 oraciones), icon (1 emoji relevante al tema), type ("good" | "warning" | "tip" | "bad").
 
 RESPONDE ÚNICAMENTE con un array JSON válido, sin markdown:
 [{"title":"...","detail":"...","icon":"...","type":"..."}]`,
         },
         { role: 'user', content: summary },
       ],
-      max_tokens: 800,
-      temperature: 0.7,
+      max_tokens: 900,
+      temperature: 0.75,
     });
 
     const text = completion.choices[0].message.content!.trim();

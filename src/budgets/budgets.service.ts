@@ -36,7 +36,24 @@ export class BudgetsService {
       }),
     );
 
-    return withSpending;
+    return this.attachCategories(userId, withSpending);
+  }
+
+  private async attachCategories(userId: string, budgets: any[]) {
+    if (budgets.length === 0) return budgets;
+
+    const categoryIds = [...new Set(budgets.map((b) => b.category_id).filter(Boolean))];
+    const { data } = await this.supabase
+      .getClient()
+      .from('categories')
+      .select('*')
+      .eq('user_id', userId)
+      .in('id', categoryIds);
+
+    const catMap: Record<string, any> = {};
+    for (const c of data || []) catMap[c.id] = c;
+
+    return budgets.map((b) => ({ ...b, category: catMap[b.category_id] ?? null }));
   }
 
   private async getSpending(userId: string, categoryId: string, period: string, now: Date) {
