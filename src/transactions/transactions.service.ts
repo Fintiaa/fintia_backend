@@ -118,22 +118,40 @@ export class TransactionsService {
   }
 
   async getCategoryExpenses(userId: string, from: string, to: string) {
-    const { data, error } = await this.supabase
-      .getClient()
-      .from('transactions')
-      .select('category_id, amount')
-      .eq('user_id', userId)
-      .eq('type', 'expense')
-      .gte('date', from)
-      .lte('date', to);
+    const [{ data: txData, error }, { data: cats }] = await Promise.all([
+      this.supabase
+        .getClient()
+        .from('transactions')
+        .select('category_id, amount')
+        .eq('user_id', userId)
+        .eq('type', 'expense')
+        .gte('date', from)
+        .lte('date', to),
+      this.supabase
+        .getClient()
+        .from('categories')
+        .select('id, name, icon, color')
+        .or(`user_id.eq.${userId},is_default.eq.true`),
+    ]);
 
     if (error) throw error;
 
-    const map: Record<string, number> = {};
-    for (const tx of data || []) {
-      map[tx.category_id] = (map[tx.category_id] || 0) + Number(tx.amount);
+    const catMap: Record<string, { name: string; icon: string; color: string }> = {};
+    for (const c of cats || []) catMap[c.id] = { name: c.name, icon: c.icon, color: c.color };
+
+    // Return array of { name, icon, color, value } instead of a plain id→amount map
+    const amountById: Record<string, number> = {};
+    for (const tx of txData || []) {
+      amountById[tx.category_id] = (amountById[tx.category_id] || 0) + Number(tx.amount);
     }
-    return map;
+
+    return Object.entries(amountById).map(([id, value]) => ({
+      id,
+      name: catMap[id]?.name || 'Otros',
+      icon: catMap[id]?.icon || '📦',
+      color: catMap[id]?.color || '#9ca3af',
+      value,
+    }));
   }
 
   async getMonthlyHistory(userId: string, months = 6, locale = 'es-CO') {

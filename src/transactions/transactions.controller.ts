@@ -66,6 +66,25 @@ export class TransactionsController {
     return this.transactionsService.getCategoryExpenses(userId, from, to);
   }
 
+  @Get('dashboard-summary')
+  async getDashboardSummary(
+    @Headers('authorization') auth: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('months') months?: string,
+    @Query('locale') locale?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const userId = await this.getUserId(auth);
+    const [stats, categoryExpenses, history, recent] = await Promise.all([
+      this.transactionsService.getStats(userId, from, to),
+      this.transactionsService.getCategoryExpenses(userId, from, to),
+      this.transactionsService.getMonthlyHistory(userId, months ? Number(months) : 6, locale || 'es-CO'),
+      this.transactionsService.findAll(userId, { limit: limit || '5' }),
+    ]);
+    return { stats, categoryExpenses, history, recent };
+  }
+
   @Get('monthly-history')
   async getMonthlyHistory(
     @Headers('authorization') auth: string,
