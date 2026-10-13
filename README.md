@@ -1,3 +1,7 @@
+> **Este repositorio fue migrado a [Truleno/fintia](https://github.com/Truleno/fintia) el 2026-10-13**
+> y está archivado (solo lectura). El código vive ahora en `apps/api` de ese repositorio,
+> junto con el frontend (`apps/web`), con todo el historial de commits conservado.
+
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
 </p>
